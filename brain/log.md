@@ -47,3 +47,17 @@ This file chronologically tracks all agent operations, setup procedures, knowled
   * `local-check`: build, tests, server start, `/health` probe, graceful stop and database removal all PASS.
   * Wrote [[projects/stage-2-design]] and [[projects/stage-2-review]] (SB-2).
 * **Status:** Stage 2 complete, pending PR review. Next is Stage 3 (implementation and testing) from `docs/plan.md`.
+
+---
+
+## 2026-11-25 — Stage 3 Testing and CI
+
+* **Author:** Developer
+* **Goal:** Produce the SRS §11.2 Stage 3 deliverables.
+* **Actions Taken:**
+  * `brain-ingest`: [[resources/crash-safety-and-deterministic-testing]] from the SQLite atomic commit document and Fowler on non-deterministic tests.
+  * `brain-refine`: moved it to `resources/`, linked from [[areas/concurrency-acid]] and the index; inbox empty; `validate_brain.py` passes.
+  * `brain-query`: answered how the `simulate-transfer` race must be built (recorded in [[projects/stage-3-testing]]); it led to fixing defect D-2.
+  * Added `simulate-transfer` to CI, tests for empty, concurrent and large-total reconciliation and for replays after restart, and fixed the stop-step check (D-3).
+  * Wrote `docs/testing.md`, `docs/defect_log.md`, the Stage 3 skill evaluations, the traceability update and [[projects/stage-3-review]] (SB-2).
+* **Status:** Stage 3 complete, pending PR review. Next is Stage 4 (Review).
