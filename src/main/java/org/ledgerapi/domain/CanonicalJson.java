@@ -1,95 +1,87 @@
 package org.ledgerapi.domain;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Deterministic canonical JSON serializer (RFC 8785 subset) for idempotency fingerprints and the
- * transaction hash chain (ADR-0004, FR-2.5, FR-4.5).
+ * JSON text for hashing and stored responses (ADR-0004).
  *
- * <p>Permitted value types are {@code null}, {@link String}, {@link Long}, {@link Integer}, {@link
- * Map} (string keys), and {@link List}. Floating-point numbers and booleans are rejected.
+ * <p>Supported values are {@code null}, strings, {@code Long}/{@code Integer}, string-keyed maps
+ * and lists. {@link #canonical} sorts object members by key and is the input of every fingerprint
+ * and transaction hash; {@link #write} keeps map iteration order and is used for response bodies.
+ * Neither emits whitespace, and both escape strings identically.
  */
 public final class CanonicalJson {
-  private static final char[] HEX = "0123456789abcdef".toCharArray();
-
   private CanonicalJson() {}
 
-  /** Serializes {@code value} into its canonical JSON string representation. */
-  public static String serialize(Object value) {
+  /** Canonical form: members sorted by key (UTF-16 code-unit order), no whitespace. */
+  public static String canonical(Object value) {
     StringBuilder out = new StringBuilder();
-    writeValue(value, out);
+    append(out, value, true);
     return out.toString();
   }
 
-  /** Serializes {@code value} into canonical UTF-8 JSON bytes. */
-  public static byte[] serializeUtf8(Object value) {
-    return serialize(value).getBytes(StandardCharsets.UTF_8);
+  /** Same encoding as {@link #canonical} but keeps the iteration order of every map. */
+  public static String write(Object value) {
+    StringBuilder out = new StringBuilder();
+    append(out, value, false);
+    return out.toString();
   }
 
-  private static void writeValue(Object value, StringBuilder out) {
+  private static void append(StringBuilder out, Object value, boolean sorted) {
     if (value == null) {
       out.append("null");
-    } else if (value instanceof String s) {
-      writeString(s, out);
-    } else if (value instanceof Long l) {
-      out.append(Long.toString(l));
-    } else if (value instanceof Integer i) {
-      out.append(Long.toString(i.longValue()));
+    } else if (value instanceof String text) {
+      appendString(out, text);
+    } else if (value instanceof Long || value instanceof Integer) {
+      out.append(value.toString());
     } else if (value instanceof Map<?, ?> map) {
-      writeObject(map, out);
+      appendObject(out, map, sorted);
     } else if (value instanceof List<?> list) {
-      writeArray(list, out);
+      out.append('[');
+      for (int i = 0; i < list.size(); i++) {
+        if (i > 0) {
+          out.append(',');
+        }
+        append(out, list.get(i), sorted);
+      }
+      out.append(']');
     } else {
       throw new IllegalArgumentException(
-          "Unsupported canonical JSON value type: " + value.getClass().getName());
+          "Unsupported canonical JSON value type " + value.getClass().getName());
     }
   }
 
-  private static void writeObject(Map<?, ?> map, StringBuilder out) {
-    List<Map.Entry<String, Object>> entries = new ArrayList<>(map.size());
-    for (Map.Entry<?, ?> entry : map.entrySet()) {
-      if (!(entry.getKey() instanceof String key)) {
-        throw new IllegalArgumentException("Canonical JSON object keys must be strings");
+  private static void appendObject(StringBuilder out, Map<?, ?> map, boolean sorted) {
+    List<String> keys = new ArrayList<>();
+    for (Object key : map.keySet()) {
+      if (!(key instanceof String name)) {
+        throw new IllegalArgumentException("Object keys must be strings");
       }
-      entries.add(
-          Map.entry(key, entry.getValue() == null ? NullSentinel.INSTANCE : entry.getValue()));
+      keys.add(name);
     }
-    // Sort by UTF-16 code-unit order (String::compareTo) per ADR-0004.
-    entries.sort(Comparator.comparing(Map.Entry::getKey));
-
+    if (sorted) {
+      keys.sort(null);
+    }
     out.append('{');
-    for (int i = 0; i < entries.size(); i++) {
-      if (i > 0) {
+    boolean first = true;
+    for (String key : keys) {
+      if (!first) {
         out.append(',');
       }
-      Map.Entry<String, Object> entry = entries.get(i);
-      writeString(entry.getKey(), out);
+      first = false;
+      appendString(out, key);
       out.append(':');
-      Object val = entry.getValue() == NullSentinel.INSTANCE ? null : entry.getValue();
-      writeValue(val, out);
+      append(out, map.get(key), sorted);
     }
     out.append('}');
   }
 
-  private static void writeArray(List<?> list, StringBuilder out) {
-    out.append('[');
-    for (int i = 0; i < list.size(); i++) {
-      if (i > 0) {
-        out.append(',');
-      }
-      writeValue(list.get(i), out);
-    }
-    out.append(']');
-  }
-
-  private static void writeString(String s, StringBuilder out) {
+  private static void appendString(StringBuilder out, String text) {
     out.append('"');
-    for (int i = 0; i < s.length(); i++) {
-      char c = s.charAt(i);
+    for (int i = 0; i < text.length(); i++) {
+      char c = text.charAt(i);
       switch (c) {
         case '"' -> out.append("\\\"");
         case '\\' -> out.append("\\\\");
@@ -100,9 +92,7 @@ public final class CanonicalJson {
         case '\r' -> out.append("\\r");
         default -> {
           if (c < 0x20) {
-            out.append("\\u00");
-            out.append(HEX[(c >>> 4) & 0x0F]);
-            out.append(HEX[c & 0x0F]);
+            out.append(String.format("\\u%04x", (int) c));
           } else {
             out.append(c);
           }
@@ -110,9 +100,5 @@ public final class CanonicalJson {
       }
     }
     out.append('"');
-  }
-
-  private enum NullSentinel {
-    INSTANCE
   }
 }

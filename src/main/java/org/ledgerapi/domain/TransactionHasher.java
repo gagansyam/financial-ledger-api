@@ -1,108 +1,109 @@
 package org.ledgerapi.domain;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 
 /**
- * Computes tamper-evident SHA-256 transaction hashes chaining each committed transaction to the
- * previous sequence (ADR-0004, FR-4.5, FR-5.3 C6).
+ * Canonical hash input {@code H} of a transaction (ADR-0004, FR-4.5). The stored {@code hash} is
+ * excluded, as is the derived {@code reversedBy}; {@code sequence} and {@code entryNumber} are JSON
+ * integers here although the public API writes them as strings.
  */
 public final class TransactionHasher {
-  public static final String GENESIS_PREVIOUS_HASH = "0".repeat(64);
+  /** {@code previousHash} of the first transaction. */
+  public static final String GENESIS_HASH = "0".repeat(64);
 
   private TransactionHasher() {}
 
-  /** Entry fields included in the canonical transaction hash payload. */
-  public record EntryInput(
-      long entryNumber,
-      String accountId,
-      String direction,
-      long amount,
-      String currency,
-      String createdAt) {
-    public EntryInput {
-      Objects.requireNonNull(accountId, "accountId");
-      Objects.requireNonNull(direction, "direction");
-      Objects.requireNonNull(currency, "currency");
-      Objects.requireNonNull(createdAt, "createdAt");
-    }
-  }
-
   /**
-   * Complete transaction fields included in the canonical hash payload (excludes derived fields).
+   * Hash-relevant fields as stored. Numeric fields are nullable so reconciliation can recompute the
+   * input of a corrupt row; a null becomes JSON {@code null} and the hash then cannot match.
    */
-  public record TransactionInput(
+  public record HashInput(
       String transactionId,
-      long sequence,
+      Long sequence,
       String type,
       String sourceAccountId,
       String destinationAccountId,
-      long amount,
+      Long amount,
       String currency,
       String reference,
       String reason,
       String reversalOf,
       String createdAt,
       String previousHash,
-      List<EntryInput> entries) {
-    public TransactionInput {
-      Objects.requireNonNull(transactionId, "transactionId");
-      Objects.requireNonNull(type, "type");
-      Objects.requireNonNull(sourceAccountId, "sourceAccountId");
-      Objects.requireNonNull(destinationAccountId, "destinationAccountId");
-      Objects.requireNonNull(currency, "currency");
-      Objects.requireNonNull(createdAt, "createdAt");
-      Objects.requireNonNull(previousHash, "previousHash");
-      Objects.requireNonNull(entries, "entries");
-      entries = List.copyOf(entries);
+      List<HashEntry> entries) {}
+
+  /** One entry of {@link HashInput}. */
+  public record HashEntry(
+      Long entryNumber,
+      String accountId,
+      String direction,
+      Long amount,
+      String currency,
+      String createdAt) {}
+
+  public static String canonicalInput(LedgerTransaction tx) {
+    List<HashEntry> entries = new ArrayList<>();
+    for (Entry e : tx.entries()) {
+      entries.add(
+          new HashEntry(
+              e.entryNumber(),
+              e.accountId(),
+              e.direction().name(),
+              e.amount(),
+              e.currency(),
+              e.createdAt()));
     }
+    return canonicalInput(
+        new HashInput(
+            tx.transactionId(),
+            tx.sequence(),
+            tx.type().name(),
+            tx.sourceAccountId(),
+            tx.destinationAccountId(),
+            tx.amount(),
+            tx.currency(),
+            tx.reference(),
+            tx.reason(),
+            tx.reversalOf(),
+            tx.createdAt(),
+            tx.previousHash(),
+            entries));
   }
 
-  /**
-   * Produces the canonical JSON payload {@code H} sorted by key with entries ordered by
-   * entryNumber.
-   */
-  public static String canonicalPayload(TransactionInput tx) {
-    Objects.requireNonNull(tx, "tx");
-    List<Map<String, Object>> sortedEntries =
-        tx.entries().stream()
-            .sorted(Comparator.comparingLong(EntryInput::entryNumber))
-            .map(TransactionHasher::entryMap)
-            .toList();
-
-    Map<String, Object> payload = new HashMap<>();
-    payload.put("amount", tx.amount());
-    payload.put("createdAt", tx.createdAt());
-    payload.put("currency", tx.currency());
-    payload.put("destinationAccountId", tx.destinationAccountId());
-    payload.put("entries", sortedEntries);
-    payload.put("previousHash", tx.previousHash());
-    payload.put("reason", tx.reason());
-    payload.put("reference", tx.reference());
-    payload.put("reversalOf", tx.reversalOf());
-    payload.put("sequence", tx.sequence());
-    payload.put("sourceAccountId", tx.sourceAccountId());
-    payload.put("transactionId", tx.transactionId());
-    payload.put("type", tx.type());
-    return CanonicalJson.serialize(payload);
-  }
-
-  /** Computes {@code lowercase-hex(SHA-256(UTF-8(canonical(H))))}. */
-  public static String hash(TransactionInput tx) {
-    return RequestFingerprint.sha256Hex(canonicalPayload(tx));
-  }
-
-  private static Map<String, Object> entryMap(EntryInput entry) {
-    Map<String, Object> map = new HashMap<>();
-    map.put("accountId", entry.accountId());
-    map.put("amount", entry.amount());
-    map.put("createdAt", entry.createdAt());
-    map.put("currency", entry.currency());
-    map.put("direction", entry.direction());
-    map.put("entryNumber", entry.entryNumber());
-    return map;
+  public static String canonicalInput(HashInput tx) {
+    List<HashEntry> ordered = new ArrayList<>(tx.entries());
+    ordered.sort(
+        Comparator.comparing(
+            HashEntry::entryNumber, Comparator.nullsFirst(Comparator.naturalOrder())));
+    List<Object> entries = new ArrayList<>();
+    for (HashEntry entry : ordered) {
+      Map<String, Object> item = new HashMap<>();
+      item.put("accountId", entry.accountId());
+      item.put("amount", entry.amount());
+      item.put("createdAt", entry.createdAt());
+      item.put("currency", entry.currency());
+      item.put("direction", entry.direction());
+      item.put("entryNumber", entry.entryNumber());
+      entries.add(item);
+    }
+    Map<String, Object> input = new HashMap<>();
+    input.put("amount", tx.amount());
+    input.put("createdAt", tx.createdAt());
+    input.put("currency", tx.currency());
+    input.put("destinationAccountId", tx.destinationAccountId());
+    input.put("entries", entries);
+    input.put("previousHash", tx.previousHash());
+    input.put("reason", tx.reason());
+    input.put("reference", tx.reference());
+    input.put("reversalOf", tx.reversalOf());
+    input.put("sequence", tx.sequence());
+    input.put("sourceAccountId", tx.sourceAccountId());
+    input.put("transactionId", tx.transactionId());
+    input.put("type", tx.type());
+    return CanonicalJson.canonical(input);
   }
 }
