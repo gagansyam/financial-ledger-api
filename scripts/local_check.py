@@ -89,17 +89,28 @@ def probe_health(port, timeout_s):
     raise TimeoutError(f"health endpoint did not answer within {timeout_s}s ({last_error})")
 
 
-def stop_server(process, timeout_s=15):
+def stop_server(process, log_path, timeout_s=15):
+    """Stops the server and reports whether the stop was graceful (FR-6.3).
+
+    On POSIX the termination signal runs the JVM shutdown hook, and a graceful stop is one that
+    exits in time and logs the "stopped" message. Windows has no termination signal for a console child, so
+    terminate() is a hard kill; that run cannot observe a graceful stop and says so.
+    """
     if process.poll() is not None:
-        return True
+        return False, f"server had already exited with code {process.returncode}"
     process.terminate()
     try:
         process.wait(timeout=timeout_s)
-        return True
     except subprocess.TimeoutExpired:
         process.kill()
         process.wait(timeout=timeout_s)
-        return False
+        return False, "had to be killed"
+    if os.name == "nt":
+        return True, "forced stop (Windows); graceful shutdown is checked on Linux"
+    text = Path(log_path).read_text(encoding="utf-8", errors="replace")
+    if '"message":"stopped"' in text:
+        return True, "graceful"
+    return False, "exited without the shutdown log line"
 
 
 def main():
@@ -167,11 +178,11 @@ def main():
                     report.record("start server", False, str(e))
                     report.skip("health probe", "server not reachable")
             finally:
-                clean = stop_server(process)
+                clean, stop_detail = stop_server(process, workdir / "server.log")
                 server_log.close()
                 if not report.passed("start server"):
                     print((workdir / "server.log").read_text(encoding="utf-8", errors="replace")[-4000:])
-                report.record("stop server", clean, "graceful" if clean else "had to be killed")
+                report.record("stop server", clean, stop_detail)
     finally:
         shutil.rmtree(workdir, ignore_errors=True)
         report.record("discard database", not workdir.exists(), str(workdir))
