@@ -12,6 +12,8 @@ Welcome to the Obsidian Second Brain knowledge vault for the **Financial Ledger 
   * [[projects/stage-1-review|Stage 1 Review Note]]
   * [[projects/stage-2-design|Stage 2: Architecture & Design]]
   * [[projects/stage-2-review|Stage 2 Review Note]]
+  * [[projects/stage-3-testing|Stage 3: Testing & CI]]
+  * [[projects/stage-3-review|Stage 3 Review Note]]
 * **[[areas/]]:** Core ongoing technical domains:
   * [[areas/ledger-architecture|Double-Entry Ledger Architecture]]
   * [[areas/concurrency-acid|Concurrency, Locking & ACID Guarantees]]
@@ -32,6 +34,7 @@ Welcome to the Obsidian Second Brain knowledge vault for the **Financial Ledger 
   * [[resources/hexagonal-architecture-provider-ports|Hexagonal Architecture and Provider Ports]]
   * [[resources/canonical-json-and-hash-chains|Canonical JSON and Hash Chains]]
   * [[resources/argon2id-password-hashing-and-session-tokens|Argon2id Password Hashing and Session Tokens]]
+  * [[resources/crash-safety-and-deterministic-testing|Crash Safety and Deterministic Testing for an Embedded Ledger]]
 * **[[archive/]]:** Completed stages, historical session records, and deprecated notes.
 
 ---
@@ -50,8 +53,9 @@ Welcome to the Obsidian Second Brain knowledge vault for the **Financial Ledger 
 
 ## 3. Project Status Dashboard
 
-* **Active Stage:** Stage 2 (Architecture & Design) complete; Stage 3 (Implementation & Testing) next.
+* **Active Stage:** Stage 3 (Testing & CI) complete; Stage 4 (Review) next.
 * **Stack:** Java 21, Javalin, SQLite (WAL), Maven wrapper.
 * **Stage 2 Delivered:** architecture, ER and UML diagrams, OpenAPI contract, ADR-0001 to ADR-0012, plan, traceability matrix, `brain-refine`, `brain-query`, `local-check`, foundation skeleton (48 tests).
 * **Stage 1:** complete (see [[projects/stage-1-review]]).
-* **Next:** open issues for T-01 to T-30 from `docs/plan.md`; deliver `simulate-transfer` in Stage 3.
+* **Stage 3 Delivered:** `simulate-transfer` (in CI), testing plan and results, defect log, 153 tests (95.5% instructions, 88.1% branches), traceability update.
+* **Next:** open issues and link PRs (PC-7); performance workloads (T-31); Stage 4 live demonstration and release tag.

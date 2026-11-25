@@ -107,6 +107,99 @@ This document records deterministic evaluations of all Agent Skills required by 
 
 ---
 
+## Stage 3 Skills Evaluation
+
+### 1. `brain-ingest`
+
+* **Evaluation Date:** 2026-11-25
+* **Evaluated By:** Developer
+* **Skill Path:** `skills/brain-ingest/SKILL.md`
+* **Test Objective:** Ingest the sources behind the Stage 3 test design into `brain/inbox/` with frontmatter, the required sections and FR/NFR mappings.
+* **Execution Details:** One note from SQLite "Atomic Commit In SQLite" and Fowler "Eradicating Non-Determinism in Tests", mapped to FR-3.8, NFR-REL-1, NFR-REL-2, TQ-1 and TQ-5.
+* **Verification Command:** `python3 scripts/validate_brain.py`
+* **Result:** **PASSED**
+
+### 2. `brain-refine`
+
+* **Evaluation Date:** 2026-11-25
+* **Evaluated By:** Developer
+* **Skill Path:** `skills/brain-refine/SKILL.md`
+* **Test Objective:** Triage the inbox note into PARA and link it both ways.
+* **Execution Details:** Moved to `resources/crash-safety-and-deterministic-testing.md` (`status: resource`), linked from `areas/concurrency-acid` and `index.md`; inbox empty again.
+* **Verification Command:** `python3 scripts/validate_brain.py`
+* **Result:** **PASSED**
+
+### 3. `brain-query`
+
+* **Evaluation Date:** 2026-11-25
+* **Evaluated By:** Developer
+* **Skill Path:** `skills/brain-query/SKILL.md`
+* **Test Objective:** Answer a Stage 3 design question with citations only.
+* **Execution Details:** "How must the simulate-transfer race be built so its outcome is deterministic?" Answer recorded in `brain/projects/stage-3-testing.md` §2, citing two resource notes, one area note, ADR-0003 and SRS FR-3.1, FR-3.5 and SK-3. It drove the fix for defect D-2.
+* **Result:** **PASSED**
+
+### 4. `local-check`
+
+* **Evaluation Date:** 2026-11-25
+* **Evaluated By:** Developer
+* **Skill Path:** `skills/local-check/SKILL.md` (`scripts/local_check.py`)
+* **Test Objective:** Build, all tests and gates, start, `/health`, graceful stop (now checked against the server's `stopped` log line, defect D-3), database removed.
+* **Verification Command:** `python3 scripts/local_check.py`
+* **Validation Output:**
+  ```
+Disposable workspace: /tmp/ledger-local-check-ykh3f9y6
+  [PASS] build
+  [PASS] tests - unit, integration, system tests and quality gates
+  [PASS] start server - listening on 127.0.0.1:56221
+  [PASS] health probe - HTTP 200 status=OK database=reachable version=0.1.0-SNAPSHOT
+  [PASS] stop server - graceful
+  [PASS] discard database - /tmp/ledger-local-check-ykh3f9y6
+  
+  OVERALL: PASS
+  ```
+* **Result:** **PASSED**
+
+### 5. `simulate-transfer` (first evaluation)
+
+* **Evaluation Date:** 2026-11-25
+* **Evaluated By:** Developer
+* **Skill Path:** `skills/simulate-transfer/SKILL.md` (`scripts/simulate_transfer.py`)
+* **Test Objective:** SK-3: two users, funding, transfer, replay without new entries, key reuse, ownership and amount rejections, a two-request race of which exactly one may succeed, reversal, exact balances, CONSISTENT reconciliation, logout, graceful stop, no credentials in the log, database discarded.
+* **Verification Command:** `python3 scripts/simulate_transfer.py`
+* **Validation Output:**
+  ```
+[PASS] start server
+  [PASS] register sim_alice - HTTP 201
+  [PASS] login sim_alice - HTTP 200
+  [PASS] create INR wallet for sim_alice - HTTP 201
+  [PASS] register sim_bob - HTTP 201
+  [PASS] login sim_bob - HTTP 200
+  [PASS] create INR wallet for sim_bob - HTTP 201
+  [PASS] admin funds alice with 10000 - HTTP 201
+  [PASS] initial balances recorded - alice 10000, bob 0
+  [PASS] transfer 2500 alice -> bob - HTTP 201
+  [PASS] replay returns the original status and body without new entries - HTTP 201, entries (2, 1) -> (2, 1)
+  [PASS] same key with a different payload is rejected - HTTP 422 IDEMPOTENCY_KEY_REUSED
+  [PASS] spending from another user's wallet is forbidden - HTTP 403 FORBIDDEN
+  [PASS] fractional amount is rejected - HTTP 400 INVALID_AMOUNT
+  [PASS] race amount is more than half and at most the remaining balance - remaining 7500, each transfer 3751
+  [PASS] two concurrent transfers: exactly one succeeds, the other is INSUFFICIENT_FUNDS - HTTP 201, HTTP 422 INSUFFICIENT_FUNDS
+  [PASS] balances equal the expected arithmetic - alice 3749 (expected 3749), bob 6251 (expected 6251)
+  [PASS] admin reverses the first transfer - HTTP 201
+  [PASS] a second reversal is rejected - HTTP 409 ALREADY_REVERSED
+  [PASS] final balances equal the expected arithmetic - alice 6249 (expected 6249), bob 3751 (expected 3751)
+  [PASS] reconciliation is CONSISTENT - HTTP 200 CONSISTENT, 4 transactions
+  [PASS] logout revokes the session - HTTP 401
+  [PASS] stop server - graceful
+  [PASS] server log contains no credentials
+  [PASS] discard database
+  OVERALL: PASS
+  ```
+* **Repetitions:** the race step was repeated on five further runs; every run gave exactly one `201` and one `422 INSUFFICIENT_FUNDS`. It also runs in CI on Linux and Windows.
+* **Result:** **PASSED**
+
+---
+
 ## Status of Scheduled Skills Across Stages
 
 | Skill Name | Target Stage | Current Status | Verification Gate |
@@ -115,4 +208,4 @@ This document records deterministic evaluations of all Agent Skills required by 
 | **`brain-refine`** | Stage 2 | **PASSED** | Inbox triage; `validate_brain.py` clean |
 | **`brain-query`** | Stage 2 | **PASSED** | ADR-0001 to ADR-0012 drafted with citations; `validate_adrs.py` clean |
 | **`local-check`** | Stage 2 | **PASSED** | Full run: build, tests, start, `/health`, stop, cleanup |
-| **`simulate-transfer`** | Stage 3 | Not yet due (Stage 3, plan T-28) | Will be evaluated against concurrent transfers and reconciliation |
+| **`simulate-transfer`** | Stage 3 | **PASSED** | 25/25 steps; race gave exactly one 201 and one 422; reconciliation CONSISTENT; runs in CI |

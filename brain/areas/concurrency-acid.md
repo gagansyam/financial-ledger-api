@@ -18,3 +18,4 @@ Responsible for ensuring race-condition-free wallet operations, database seriali
 * [[resources/sqlite-wal-locking-mechanics|SQLite WAL and Transaction Locking Mechanics]]
 * [[resources/acid-transactions-in-relational-databases|ACID Transactions in Relational Databases]]
 * [[resources/concurrency-race-conditions-wallets|Concurrency Race Conditions in Wallet Balances]]
+* [[resources/crash-safety-and-deterministic-testing|Crash Safety and Deterministic Testing for an Embedded Ledger]]
