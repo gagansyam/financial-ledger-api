@@ -9,6 +9,8 @@ import java.util.Enumeration;
 import java.util.List;
 import java.util.Set;
 import org.ledgerapi.application.HealthService;
+import org.ledgerapi.application.LedgerServices;
+import org.ledgerapi.application.TooManyRequestsException;
 import org.ledgerapi.domain.ErrorCode;
 import org.ledgerapi.domain.LedgerException;
 import org.ledgerapi.provider.StorageBusyException;
@@ -25,14 +27,25 @@ public final class HttpApi {
 
   private HttpApi() {}
 
+  /** Health route only; used where no ledger services are wired. */
   public static Javalin create(HealthService health) {
+    return create(health, null, List.of());
+  }
+
+  /** All routes (SRS 4.2). {@code trustedProxies} bounds X-Forwarded-For trust (NFR-SEC-9). */
+  public static Javalin create(LedgerServices services, List<String> trustedProxies) {
+    return create(services.health(), services, trustedProxies);
+  }
+
+  private static Javalin create(
+      HealthService health, LedgerServices services, List<String> trustedProxies) {
     RouteTable routes = new RouteTable();
     Javalin app =
         Javalin.create(
             config -> {
               config.showJavalinBanner = false;
               config.useVirtualThreads = false;
-              config.http.maxRequestSize = 16_384L;
+              config.http.maxRequestSize = Endpoint.MAX_BODY_BYTES;
               config.router.ignoreTrailingSlashes = false;
               config.requestLogger.http(HttpApi::logRequest);
             });
@@ -47,10 +60,26 @@ public final class HttpApi {
         });
 
     register(app, routes, HandlerType.GET, BASE_PATH + "/health", new HealthHandler(health));
+    if (services != null) {
+      LedgerRoutes ledger = new LedgerRoutes(services, new ClientAddress(trustedProxies));
+      for (LedgerRoutes.Route route : ledger.routes()) {
+        register(
+            app,
+            routes,
+            HandlerType.valueOf(route.method()),
+            BASE_PATH + route.path(),
+            route.endpoint());
+      }
+    }
 
     app.exception(
         LedgerException.class,
-        (e, ctx) -> ErrorResponses.write(ctx, e.code(), e.getMessage(), e.details()));
+        (e, ctx) -> {
+          if (e instanceof TooManyRequestsException limited) {
+            ctx.header("Retry-After", Long.toString(limited.retryAfterSeconds()));
+          }
+          ErrorResponses.write(ctx, e.code(), e.getMessage(), e.details());
+        });
     app.exception(
         StorageBusyException.class,
         (e, ctx) -> {
@@ -99,6 +128,9 @@ public final class HttpApi {
             .addKeyValue("durationMs", Math.round(elapsedMs));
     if (errorCode != null) {
       record = record.addKeyValue("errorCode", errorCode);
+    }
+    if (Boolean.TRUE.equals(ctx.attribute(LedgerRoutes.REPLAY_ATTRIBUTE))) {
+      record = record.addKeyValue("idempotencyReplay", true);
     }
     record.log("request");
   }
